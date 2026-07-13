@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ミニゲーム比較実験プロトタイプ</title>
+<style>
+  :root{
+    --bg:#f7f7f7;
+    --ink:#2b2b2b;
+    --mid:#535353;
+    --line:#c9c9c9;
+    --accentA:#2f6f6a; /* クリア型アクセント(落ち着いた青緑) */
+    --accentB:#a8562f; /* ハイスコア型アクセント(暖色) */
+    --panel:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Courier New', ui-monospace, monospace;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:24px 12px 40px;
+    min-height:100vh;
+  }
+  h1{
+    font-size:15px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--mid);
+    margin:0 0 4px;
+  }
+  .sub{
+    font-size:11px;
+    color:#8a8a8a;
+    margin-bottom:18px;
+    letter-spacing:1px;
+  }
+  #stage{
+    position:relative;
+    width:100%;
+    max-width:820px;
+  }
+  canvas{
+    width:100%;
+    display:block;
+    background:var(--bg);
+    border-top:2px solid var(--ink);
+    border-bottom:2px solid var(--ink);
+  }
+  .hud{
+    display:flex;
+    justify-content:space-between;
+    font-size:13px;
+    padding:6px 2px;
+    color:var(--mid);
+    letter-spacing:1px;
+  }
+  .hud b{color:var(--ink);}
+  #overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    background:rgba(247,247,247,0.94);
+    gap:14px;
+    padding:20px;
+  }
+  .hidden{display:none;}
+  #overlay.hidden{display:none;}
+  .modebtn{
+    display:block;
+    width:280px;
+    max-width:80vw;
+    padding:14px 10px;
+    margin:6px 0;
+    border:2px solid var(--ink);
+    background:var(--panel);
+    font-family:inherit;
+    font-size:13px;
+    letter-spacing:1px;
+    cursor:pointer;
+    transition:transform .08s ease, background .15s ease;
+  }
+  .modebtn:hover{transform:translateY(-1px);}
+  .modebtn.A{border-color:var(--accentA); color:var(--accentA);}
+  .modebtn.A:hover{background:var(--accentA); color:#fff;}
+  .modebtn.B{border-color:var(--accentB); color:var(--accentB);}
+  .modebtn.B:hover{background:var(--accentB); color:#fff;}
+  .desc{
+    font-size:11px;
+    color:#7a7a7a;
+    max-width:340px;
+    line-height:1.7;
+    margin:0 0 8px;
+  }
+  .big{
+    font-size:22px;
+    letter-spacing:2px;
+    margin:0;
+  }
+  .small{
+    font-size:11px;
+    color:#8a8a8a;
+    letter-spacing:1px;
+  }
+  .row{display:flex; gap:10px; margin-top:6px;}
+  .rowbtn{
+    padding:9px 16px;
+    border:2px solid var(--ink);
+    background:var(--panel);
+    font-family:inherit;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .rowbtn:hover{background:var(--ink); color:#fff;}
+  .loginField{
+    width:100%;
+    max-width:340px;
+    padding:10px 12px;
+    margin:6px 0;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:13px;
+    outline:none;
+  }
+  .loginField:focus{
+    border-color:var(--accentA);
+  }
+  .tag{
+    display:inline-block;
+    font-size:10px;
+    letter-spacing:1px;
+    padding:2px 8px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    color:#8a8a8a;
+    margin-bottom:4px;
+  }
+  .surveyLink{
+    display:inline-block;
+    margin-top:4px;
+    font-size:11px;
+    color:var(--mid);
+    text-decoration:underline;
+  }
+  footer{
+    font-size:10px;
+    color:#b0b0b0;
+    margin-top:26px;
+    letter-spacing:1px;
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Gumi Payapaya Game</h1>
+<div class="sub">クリア型 vs ハイスコア型 リプレイ意欲 比較実験プロトタイプ</div>
+
+<div id="stage">
+  <canvas id="game" width="800" height="300"></canvas>
+  <div class="hud">
+    <span id="hudLeft"><b>MODE</b> -</span>
+    <span id="hudRight"><b>SCORE</b> 0</span>
+  </div>
+
+  <div id="overlay">
+    <div id="loginPanel">
+      <p class="desc">まずはログインしてください。新しいアカウントも作成できます。</p>
+      <input id="usernameInput" class="loginField" type="text" placeholder="ユーザー名">
+      <input id="passwordInput" class="loginField" type="password" placeholder="パスワード">
+      <div class="row">
+        <button class="rowbtn" id="btnLogin">ログイン</button>
+        <button class="rowbtn" id="btnCreate">アカウント作成</button>
+      </div>
+      <p id="loginMessage" class="small"></p>
+    </div>
+
+    <div id="selectPanel" class="hidden">
+      <p class="desc">操作はどちらも「スペースキー / タップ」のみ。障害物・見た目・当たり判定は共通です。700mごとにフェーズが切り替わり、偶数フェーズは左右反転になります。</p>
+      <button class="modebtn A" id="btnA">
+        パターン A：クリア型 (RTA)<br>
+        <span style="font-size:10px;">ゴールあり(2000m)・固定コース・Greatジャンプで加速</span>
+      </button>
+      <button class="modebtn B" id="btnB">
+        パターン B：ハイスコア型 (エンドレス)<br>
+        <span style="font-size:10px;">ゴールなし・障害物ランダム・スコアを競う</span>
+      </button>
+      <div class="row">
+        <button class="rowbtn" id="logoutBtn">ログアウト</button>
+      </div>
+    </div>
+
+    <div id="resultPanel" class="hidden"></div>
+  </div>
+</div>
+
+<footer>
+  原型: Chrome Dino Game / このプロトタイプはゼミ検証用の試作品です<br>
+  <a class="surveyLink" href="https://forms.gle/kNyQQPXPEpe8aDYv9" target="_blank" rel="noopener">▶ プレイ後アンケートはこちら(別ページ)</a>
+</footer>
+
+<script>
+(function(){
+  // ---------- 共通設定 ----------
+  const CONFIG = {
+    groundY: 230,
+    gumiX: 60,
+    gumiW: 40,
+    gumiH: 44,
+    duckH: 26,
+    gravity: 0.9,
+    jumpVel: -14.5,
+    baseSpeed: 6,
+    speedStep: 0.45,
+    speedStepDistance: 130,   // この距離ごとに速度上昇(共通)
+    phaseDistance: 700,       // フェーズ切替間隔(共通・偶数フェーズでmirrored)
+    goalDistance: 2000,       // パターンAのみ使用
+    minGap: 46, maxGap: 95,   // 障害物間フレーム間隔の目安(通常)
+    narrowGapChance: 0.4,     // 間隔が狭い障害物が出現する確率(共通)
+    narrowMinGap: 30, narrowMaxGap: 45, // 狭い間隔の範囲
+    seedA: 20261130,
+  };
+
+  const OBSTACLE_TYPES = [
+    {w:17, h:34, label:'small',  weight:0.40},
+    {w:26, h:46, label:'mid',    weight:0.32},
+    {w:40, h:34, label:'wide',   weight:0.18},
+    {w:54, h:58, label:'xlarge', weight:0.10},
+  ];
+
+  // ---------- 疑似乱数(パターンA用: 固定シード) ----------
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- DOM ----------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const selectPanel = document.getElementById('selectPanel');
+  const hudLeft = document.getElementById('hudLeft');
+  const hudRight = document.getElementById('hudRight');
+  const usernameInput = document.getElementById('usernameInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const loginMessage = document.getElementById('loginMessage');
+  const btnLogin = document.getElementById('btnLogin');
+  const btnCreate = document.getElementById('btnCreate');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const loginPanel = document.getElementById('loginPanel');
+  const resultPanel = document.getElementById('resultPanel');
+
+  let mode = null;          // 'A' or 'B'
+  let rng = Math.random;
+  let running = false;
+  let raf = null;
+
+ let currentUser = null;
+  let currentProfile = null;
+  // Google Apps ScriptのエンドポイントURL(アカウント・ログ送信用)
+  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwNxWnnz4AK6vJGy9hD3m9e0ykhq9-VSw6HiSFfP7w4IE2XdtejSaCcw9qwMkKQLW_kmg/exec';
+
+  let bestTimeA = null;
+  let bestScoreB = null;
+
+  function hashPassword(password){
+    try{ return btoa(password); } catch(e){ return password; }
+  }
+
+  async function callServer(payload){
+    const res = await fetch(GAS_ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'}, // CORSプリフライト回避のため必ずtext/plain
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  }
+
+  function syncProfileToServer(profile){
+    callServer({ action:'sync', username: profile.username, stats: profile.stats })
+      .catch(err => console.warn('サーバー送信に失敗しました', err));
+  }
+
+  function saveCurrentProfile(){
+    if(!currentProfile || !currentUser) return;
+    syncProfileToServer(currentProfile);
+  }
+
+  function setCurrentProfile(profile){
+    currentProfile = profile;
+    currentUser = profile.username;
+    bestTimeA = profile.stats.A.bestTime;
+    bestScoreB = profile.stats.B.bestScore;
+  }
+
+  function updateProfileStats(){
+    // 画面上には表示しないため、ここでは何もしない
+  }
+
+  function showLoginScreen(message){
+    overlay.classList.remove('hidden');
+    selectPanel.classList.add('hidden');
+    resultPanel.classList.add('hidden');
+    loginPanel.classList.remove('hidden');
+    loginMessage.textContent = message || '';
+  }
+
+  function showSelectScreen(){
+    overlay.classList.remove('hidden');
+    loginPanel.classList.add('hidden');
+    resultPanel.classList.add('hidden');
+    selectPanel.classList.remove('hidden');
+    updateProfileStats();
+  }
+
+  async function loginUser(){
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+    if(!username || !password){
+      loginMessage.textContent = 'ユーザー名とパスワードを入力してください。';
+      return;
+    }
+    loginMessage.textContent = 'ログイン中...';
+    try{
+      const result = await callServer({ action:'login', username, password: hashPassword(password) });
+      if(result.status === 'error'){ loginMessage.textContent = result.message; return; }
+      if(!result.found){ loginMessage.textContent = 'アカウントが見つかりません。'; return; }
+      setCurrentProfile({ username: result.username, stats: result.stats });
+      usernameInput.value = '';
+      passwordInput.value = '';
+      loginMessage.textContent = '';
+      showSelectScreen();
+    } catch(err){
+      loginMessage.textContent = 'サーバーに接続できませんでした。';
+    }
+  }
+
+  async function handleCreate(){
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+    if(!username || !password){
+      loginMessage.textContent = 'ユーザー名とパスワードを入力してください。';
+      return;
+    }
+    loginMessage.textContent = '作成中...';
+    try{
+      const result = await callServer({ action:'create', username, password: hashPassword(password) });
+      if(result.status === 'error'){ loginMessage.textContent = result.message; return; }
+      setCurrentProfile({ username: result.username, stats: result.stats });
+      usernameInput.value = '';
+      passwordInput.value = '';
+      loginMessage.textContent = 'アカウントを作成しました。';
+      showSelectScreen();
+    } catch(err){
+      loginMessage.textContent = 'サーバーに接続できませんでした。';
+    }
+  }
+
+  function logout(){
+    currentUser = null;
+    currentProfile = null;
+    bestTimeA = null;
+    bestScoreB = null;
+    showLoginScreen('ログアウトしました。');
+  }
+
+  btnLogin.onclick = loginUser;
+  btnCreate.onclick = handleCreate;
+  logoutBtn.onclick = logout;
+  [usernameInput, passwordInput].forEach(input => {
+    input.addEventListener('keydown', e => {
+      if(e.key === 'Enter'){
+        loginUser();
+      }
+    });
+  });
+
+  showLoginScreen();
+
+  let state = {};
+
+  function resetState(){
+    state = {
+      distance: 0,
+      speed: CONFIG.baseSpeed,
+      gumi: {y: CONFIG.groundY - CONFIG.gumiH, vy:0, onGround:true, ducking:false, jumpStartDistance:0},
+      obstacles: [],
+      nextSpawnAt: 0,
+      frame: 0,
+      phase: 1,
+      extraBoost: 0,
+      startTime: performance.now(),
+      cleared: false,
+      gameOver: false,
+      greatFlashTimer:0,
+      awaitingRetry:false,
+      lastGapWasNarrow:false,
+    };
+    if(mode === 'A'){
+      rng = mulberry32(CONFIG.seedA);
+    } else {
+      rng = Math.random;
+    }
+    scheduleNextSpawn();
+  }
+
+  function scheduleNextSpawn(){
+    let gap;
+    if(rng() < CONFIG.narrowGapChance){
+      gap = CONFIG.narrowMinGap + rng()*(CONFIG.narrowMaxGap - CONFIG.narrowMinGap);
+      state.lastGapWasNarrow = true;
+    } else {
+      gap = CONFIG.minGap + rng()*(CONFIG.maxGap - CONFIG.minGap);
+      state.lastGapWasNarrow = false;
+    }
+    state.nextSpawnAt = state.frame + gap;
+  }
+
+  function pickObstacleType(){
+    // 直前が狭い間隔だった場合は、小さい障害物のみに限定して難易度スパイクを防ぐ
+    const pool = state.lastGapWasNarrow
+      ? OBSTACLE_TYPES.filter(t => t.label === 'small' || t.label === 'mid')
+      : OBSTACLE_TYPES;
+    const totalWeight = pool.reduce((sum,t)=>sum+t.weight, 0);
+    let r = rng() * totalWeight;
+    for(const t of pool){
+      r -= t.weight;
+      if(r <= 0) return t;
+    }
+    return pool[pool.length-1];
+  }
+
+  function spawnObstacle(){
+    const t = pickObstacleType();
+    state.obstacles.push({
+      x: canvas.width + 10,
+      w: t.w, h: t.h,
+      passed:false,
+    });
+  }
+
+  function currentSpeed(){
+    let s = CONFIG.baseSpeed + Math.floor(state.distance / CONFIG.speedStepDistance) * CONFIG.speedStep;
+    s += state.extraBoost || 0; // パターンAのみ: Greatジャンプで恒久的に加算(時間制限なし)
+    return s;
+  }
+
+  function jump(){
+    if(state.gameOver || state.cleared) return;
+    if(state.gumi.onGround){
+      state.gumi.vy = CONFIG.jumpVel;
+      state.gumi.onGround = false;
+      state.gumi.jumpStartDistance = state.distance;
+    }
+  }
+
+  window.addEventListener('keydown', (e)=>{
+    if(e.code === 'Space' || e.code === 'ArrowUp'){
+      e.preventDefault();
+      if(state.awaitingRetry){
+        startGame(mode);
+        return;
+      }
+      jump();
+    }
+  });
+  canvas.addEventListener('pointerdown', jump);
+
+  document.getElementById('btnA').onclick = ()=> startGame('A');
+  document.getElementById('btnB').onclick = ()=> startGame('B');
+
+  function startGame(m){
+    mode = m;
+    overlay.classList.add('hidden');
+    resetState();
+    running = true;
+    hudLeft.innerHTML = '<b>MODE</b> ' + (m==='A' ? 'A: クリア型(RTA)' : 'B: ハイスコア型');
+    if(raf) cancelAnimationFrame(raf);
+    loop();
+  }
+
+  function loop(){
+    update();
+    draw();
+    if(running){
+      raf = requestAnimationFrame(loop);
+    }
+  }
+
+  function update(){
+    if(state.gameOver || state.cleared) return;
+
+    state.frame++;
+    const spd = currentSpeed();
+    state.speed = spd;
+    state.distance += spd/10;
+
+    // フェーズ切替(700mごと、偶数フェーズはmirrored)
+    state.phase = Math.floor(state.distance / CONFIG.phaseDistance) + 1;
+
+    // 重力・ジャンプ
+    const d = state.gumi;
+    d.y += d.vy;
+    d.vy += CONFIG.gravity;
+    const groundLevel = CONFIG.groundY - CONFIG.gumiH;
+    if(d.y >= groundLevel){
+      d.y = groundLevel;
+      d.vy = 0;
+      d.onGround = true;
+    }
+
+    if(state.greatFlashTimer > 0) state.greatFlashTimer--;
+
+    // 障害物生成
+    if(state.frame >= state.nextSpawnAt){
+      spawnObstacle();
+      scheduleNextSpawn();
+    }
+
+    // 障害物移動・判定
+    const gumiLeft = CONFIG.gumiX;
+    const gumiRight = CONFIG.gumiX + CONFIG.gumiW;
+    const gumiTop = d.y;
+    const gumiBottom = d.y + CONFIG.gumiH;
+
+    for(let i = state.obstacles.length-1; i>=0; i--){
+      const o = state.obstacles[i];
+      o.x -= spd;
+
+      const oLeft = o.x, oRight = o.x + o.w;
+      const oTop = CONFIG.groundY - o.h, oBottom = CONFIG.groundY;
+
+      // 衝突判定(共通ロジック)
+      const overlapX = gumiRight > oLeft && gumiLeft < oRight;
+      const overlapY = gumiBottom > oTop && gumiTop < oBottom;
+      if(overlapX && overlapY){
+        endGame(false);
+        return;
+      }
+
+      // Greatジャンプ判定(パターンAのみ): 障害物を飛び越えた瞬間の余白が小さい
+      const greatBoost = 0.35;
+      const greatClearanceMax = 200;
+      if(mode==='A' && !o.passed && oRight < gumiLeft){
+        o.passed = true;
+        if(!d.onGround){
+          const clearance = gumiBottom - oTop;
+          if(clearance > 0 && clearance < greatClearanceMax){
+            state.extraBoost += greatBoost;
+            state.greatFlashTimer = 30;
+          }
+        }
+      } else if(mode!=='A' && !o.passed && oRight < gumiLeft){
+        o.passed = true;
+      }
+
+      if(o.x + o.w < -20){
+        state.obstacles.splice(i,1);
+      }
+    }
+
+    // ゴール判定(パターンAのみ)
+    if(mode==='A' && state.distance >= CONFIG.goalDistance){
+      endGame(true);
+      return;
+    }
+  }
+
+  function recordSession(duration, score, cleared){
+    if(!currentProfile) return;
+    const stats = currentProfile.stats[mode];
+    stats.plays = (stats.plays || 0) + 1;
+    stats.totalTime = (stats.totalTime || 0) + duration;
+    if(mode === 'A'){
+      if(cleared && (stats.bestTime === null || duration < stats.bestTime)){
+        stats.bestTime = duration;
+      }
+      bestTimeA = stats.bestTime;
+    } else {
+      if(score > (stats.bestScore || 0)){
+        stats.bestScore = score;
+      }
+      bestScoreB = stats.bestScore;
+    }
+    saveCurrentProfile();
+    updateProfileStats();
+  }
+
+  function endGame(cleared){
+    state.gameOver = !cleared;
+    state.cleared = cleared;
+    running = false;
+    const elapsed = (performance.now() - state.startTime) / 1000;
+
+    if(mode==='A'){
+      const timeSec = elapsed;
+      if(cleared){
+        if(bestTimeA===null || timeSec < bestTimeA) bestTimeA = timeSec;
+        recordSession(timeSec, 0, true);
+        showResult(true, timeSec);
+      } else {
+        recordSession(timeSec, 0, false);
+        showResult(false, null);
+      }
+    } else {
+      const score = Math.floor(state.distance);
+      if(bestScoreB===null || score > bestScoreB) bestScoreB = score;
+      recordSession(elapsed, score, false);
+      showResult(false, null, score);
+    }
+    draw();
+    state.awaitingRetry = true;
+  }
+
+  function showResult(cleared, timeSec, score){
+    overlay.classList.remove('hidden');
+    loginPanel.classList.add('hidden');
+    selectPanel.classList.add('hidden');
+    resultPanel.classList.remove('hidden');
+    let html = '';
+    if(mode==='A'){
+      if(cleared){
+        html = `<p class="tag">CLEAR</p>
+          <p class="big">クリアタイム: ${timeSec.toFixed(2)} 秒</p>
+          <p class="small">自己ベスト: ${bestTimeA.toFixed(2)} 秒</p>`;
+      } else {
+        html = `<p class="tag">GAME OVER</p>
+          <p class="big">距離 ${Math.floor(state.distance)}m で失敗</p>
+          <p class="small">${bestTimeA? 'これまでの自己ベスト: '+bestTimeA.toFixed(2)+'秒' : 'クリア未達成'}</p>`;
+      }
+    } else {
+      html = `<p class="tag">GAME OVER</p>
+        <p class="big">SCORE ${score}</p>
+        <p class="small">ハイスコア: ${bestScoreB}</p>`;
+    }
+    html += `<div class="row">
+      <button class="rowbtn" id="retryBtn">もう一度</button>
+      <button class="rowbtn" id="backBtn">モード選択に戻る</button>
+    </div>`;
+    resultPanel.innerHTML = html;
+    document.getElementById('retryBtn').onclick = ()=> startGame(mode);
+    document.getElementById('backBtn').onclick = ()=> showSelectScreen();
+  }
+
+  function draw(){
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const mirrored = (state.phase % 2 === 0);
+    ctx.save();
+    if(mirrored){
+      // 偶数フェーズ: キャンバス全体を水平反転して描画するだけで
+      // 恐竜・障害物・背景・ゴール旗すべてが自動的に鏡写しになる
+      ctx.translate(w,0);
+      ctx.scale(-1,1);
+    }
+
+    // 地面
+    ctx.strokeStyle = '#2b2b2b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, CONFIG.groundY);
+    ctx.lineTo(w, CONFIG.groundY);
+    ctx.stroke();
+
+    // 地面の点線(奥行き演出、スクロール)
+    ctx.strokeStyle = '#c9c9c9';
+    ctx.lineWidth = 1;
+    const dashOffset = Math.floor(state.distance*4) % 30;
+    for(let x = -dashOffset; x < w; x+=30){
+      ctx.beginPath();
+      ctx.moveTo(x, CONFIG.groundY+6);
+      ctx.lineTo(x+14, CONFIG.groundY+6);
+      ctx.stroke();
+    }
+
+    // 雲(背景・パララックス)
+    ctx.fillStyle = '#dcdcdc';
+    const cloudOffset = Math.floor(state.distance*1.2) % 400;
+    [ [80,60],[260,90],[430,50] ].forEach(([cx,cy])=>{
+      const x = ((cx - cloudOffset) % (w+400) + (w+400)) % (w+400) - 200;
+      ctx.fillRect(x, cy, 46,14);
+      ctx.fillRect(x+10, cy-8, 26,10);
+    });
+
+    // 恐竜(シンプルなブロック形状)
+    const d = state.gumi;
+    ctx.fillStyle = mode==='A' ? '#2f6f6a' : '#a8562f';
+    if(state.greatFlashTimer>0 && Math.floor(state.greatFlashTimer/4)%2===0){
+      ctx.fillStyle = '#e0b84a';
+    }
+    ctx.fillRect(CONFIG.gumiX, d.y, CONFIG.gumiW, CONFIG.gumiH);
+    // 目(向き识别用の白点)
+    ctx.fillStyle = '#f7f7f7';
+    ctx.fillRect(CONFIG.gumiX + CONFIG.gumiW - 10, d.y+6, 5,5);
+    // 脚(簡易アニメーション)
+    ctx.fillStyle = mode==='A' ? '#2f6f6a' : '#a8562f';
+    if(d.onGround){
+      const legPhase = Math.floor(state.frame/6)%2;
+      if(legPhase===0){
+        ctx.fillRect(CONFIG.gumiX+4, d.y+CONFIG.gumiH, 8, 8);
+      } else {
+        ctx.fillRect(CONFIG.gumiX+CONFIG.gumiW-12, d.y+CONFIG.gumiH, 8, 8);
+      }
+    }
+
+    // 障害物
+    ctx.fillStyle = '#2b2b2b';
+    state.obstacles.forEach(o=>{
+      ctx.fillRect(o.x, CONFIG.groundY - o.h, o.w, o.h);
+    });
+
+    // ゴールの旗(パターンAのみ): 残り距離から逆算して位置を毎フレーム計算するので
+    // 速度が変化しても正しい位置に表示される
+    if(mode==='A'){
+      const flagX = CONFIG.gumiX + (CONFIG.goalDistance - state.distance) * 10;
+      if(flagX > -60 && flagX < w + 60){
+        ctx.strokeStyle = '#2b2b2b';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(flagX, CONFIG.groundY);
+        ctx.lineTo(flagX, CONFIG.groundY - 90);
+        ctx.stroke();
+        ctx.fillStyle = '#e0b84a';
+        ctx.beginPath();
+        ctx.moveTo(flagX, CONFIG.groundY - 90);
+        ctx.lineTo(flagX + 30, CONFIG.groundY - 78);
+        ctx.lineTo(flagX, CONFIG.groundY - 66);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Great! フラッシュ表示
+    if(state.greatFlashTimer>0){
+      ctx.save();
+      if(mirrored){ ctx.translate(w,0); ctx.scale(-1,1); } // キャンバス全体の反転を打ち消す
+      ctx.fillStyle = '#e0b84a';
+      ctx.font = 'bold 14px monospace';
+      const text = 'GREAT!';
+      const textWidth = ctx.measureText(text).width;
+      const gumiScreenX = mirrored ? w - CONFIG.gumiX - CONFIG.gumiW : CONFIG.gumiX;
+      const textX = gumiScreenX + CONFIG.gumiW/2 - textWidth/2;
+      ctx.fillText(text, textX, state.gumi.y - 10);
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // フェーズ表示(画面固定・反転しない)
+    ctx.fillStyle = '#8a8a8a';
+    ctx.font = '11px monospace';
+    ctx.fillText('PHASE ' + state.phase + (mirrored ? ' (mirrored)' : ''), 10, 18);
+
+    // HUD更新
+    if(mode==='A'){
+      const elapsed = state.gameOver||state.cleared ? null : (performance.now()-state.startTime)/1000;
+      hudRight.innerHTML = '<b>TIME</b> ' + (elapsed!==null ? elapsed.toFixed(2)+'s' : '-') +
+        '　<b>DIST</b> ' + Math.floor(state.distance) + 'm / ' + CONFIG.goalDistance + 'm';
+    } else {
+      hudRight.innerHTML = '<b>SCORE</b> ' + Math.floor(state.distance) +
+        (bestScoreB!==null ? '　<b>HI</b> ' + bestScoreB : '');
+    }
+  }
+
+})();
+</script>
+</body>
+</html>
