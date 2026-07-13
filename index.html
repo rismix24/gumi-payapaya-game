@@ -272,6 +272,8 @@
   let currentUser = null;
   let currentProfile = null;
   const STORAGE_KEY = 'dinoReplayAccounts';
+  // Google Apps ScriptのエンドポイントURL(ログ送信用)
+  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwNxWnnz4AK6vJGy9hD3m9e0ykhq9-VSw6HiSFfP7w4IE2XdtejSaCcw9qwMkKQLW_kmg/exec';
 
   let bestTimeA = null;
   let bestScoreB = null;
@@ -303,6 +305,21 @@
     const accounts = loadAccounts();
     accounts[currentUser] = currentProfile;
     saveAccounts(accounts);
+    syncProfileToServer(currentProfile);
+  }
+
+  function syncProfileToServer(profile){
+  if(!GAS_ENDPOINT) return;
+  fetch(GAS_ENDPOINT, {
+    method: 'POST',
+    // Content-Typeをtext/plainにするのがポイント。application/jsonにすると
+    // Apps Script側がブラウザのCORSプリフライト(OPTIONS)に対応しておらず失敗するため
+    headers: {'Content-Type': 'text/plain;charset=utf-8'},
+    body: JSON.stringify({
+      username: profile.username,
+      stats: profile.stats
+    })
+  }).catch(err => console.warn('サーバー送信に失敗しました', err));
   }
 
   function setCurrentProfile(profile){
