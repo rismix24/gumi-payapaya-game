@@ -194,7 +194,6 @@
         <span style="font-size:10px;">ゴールなし・障害物ランダム・スコアを競う</span>
       </button>
       <div class="row">
-        <button class="rowbtn" id="btnExportLog">ログをCSVダウンロード</button>
         <button class="rowbtn" id="logoutBtn">ログアウト</button>
       </div>
     </div>
@@ -262,64 +261,41 @@
   const logoutBtn = document.getElementById('logoutBtn');
   const loginPanel = document.getElementById('loginPanel');
   const resultPanel = document.getElementById('resultPanel');
-  const btnExportLog = document.getElementById('btnExportLog');
 
   let mode = null;          // 'A' or 'B'
   let rng = Math.random;
   let running = false;
   let raf = null;
 
-  let currentUser = null;
+ let currentUser = null;
   let currentProfile = null;
-  const STORAGE_KEY = 'dinoReplayAccounts';
-  // Google Apps ScriptのエンドポイントURL(ログ送信用)
+  // Google Apps ScriptのエンドポイントURL(アカウント・ログ送信用)
   const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwNxWnnz4AK6vJGy9hD3m9e0ykhq9-VSw6HiSFfP7w4IE2XdtejSaCcw9qwMkKQLW_kmg/exec';
 
   let bestTimeA = null;
   let bestScoreB = null;
 
-  function loadAccounts(){
-    try{
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return typeof data === 'object' && data ? data : {};
-    } catch(e){
-      return {};
-    }
-  }
-
-  function saveAccounts(accounts){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-  }
-
   function hashPassword(password){
     try{ return btoa(password); } catch(e){ return password; }
   }
 
-  function getAccount(username){
-    const accounts = loadAccounts();
-    return accounts[username] || null;
+  async function callServer(payload){
+    const res = await fetch(GAS_ENDPOINT, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'}, // CORSプリフライト回避のため必ずtext/plain
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  }
+
+  function syncProfileToServer(profile){
+    callServer({ action:'sync', username: profile.username, stats: profile.stats })
+      .catch(err => console.warn('サーバー送信に失敗しました', err));
   }
 
   function saveCurrentProfile(){
     if(!currentProfile || !currentUser) return;
-    const accounts = loadAccounts();
-    accounts[currentUser] = currentProfile;
-    saveAccounts(accounts);
     syncProfileToServer(currentProfile);
-  }
-
-  function syncProfileToServer(profile){
-  if(!GAS_ENDPOINT) return;
-  fetch(GAS_ENDPOINT, {
-    method: 'POST',
-    // Content-Typeをtext/plainにするのがポイント。application/jsonにすると
-    // Apps Script側がブラウザのCORSプリフライト(OPTIONS)に対応しておらず失敗するため
-    headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    body: JSON.stringify({
-      username: profile.username,
-      stats: profile.stats
-    })
-  }).catch(err => console.warn('サーバー送信に失敗しました', err));
   }
 
   function setCurrentProfile(profile){
@@ -349,58 +325,47 @@
     updateProfileStats();
   }
 
-  function createAccount(username, password){
-    const accounts = loadAccounts();
-    if(accounts[username]) return false;
-    const profile = {
-      username,
-      password: hashPassword(password),
-      stats: {
-        A: {plays:0, totalTime:0, bestTime:null},
-        B: {plays:0, totalTime:0, bestScore:0}
-      }
-    };
-    accounts[username] = profile;
-    saveAccounts(accounts);
-    return profile;
-  }
-
-  function loginUser(){
+  async function loginUser(){
     const username = usernameInput.value.trim();
     const password = passwordInput.value;
     if(!username || !password){
       loginMessage.textContent = 'ユーザー名とパスワードを入力してください。';
       return;
     }
-    const account = getAccount(username);
-    if(!account || account.password !== hashPassword(password)){
-      loginMessage.textContent = 'ログインに失敗しました。';
-      return;
+    loginMessage.textContent = 'ログイン中...';
+    try{
+      const result = await callServer({ action:'login', username, password: hashPassword(password) });
+      if(result.status === 'error'){ loginMessage.textContent = result.message; return; }
+      if(!result.found){ loginMessage.textContent = 'アカウントが見つかりません。'; return; }
+      setCurrentProfile({ username: result.username, stats: result.stats });
+      usernameInput.value = '';
+      passwordInput.value = '';
+      loginMessage.textContent = '';
+      showSelectScreen();
+    } catch(err){
+      loginMessage.textContent = 'サーバーに接続できませんでした。';
     }
-    setCurrentProfile(account);
-    usernameInput.value = '';
-    passwordInput.value = '';
-    loginMessage.textContent = '';
-    showSelectScreen();
   }
 
-  function handleCreate(){
+  async function handleCreate(){
     const username = usernameInput.value.trim();
     const password = passwordInput.value;
     if(!username || !password){
       loginMessage.textContent = 'ユーザー名とパスワードを入力してください。';
       return;
     }
-    if(getAccount(username)){
-      loginMessage.textContent = 'そのユーザー名は既に使われています。';
-      return;
+    loginMessage.textContent = '作成中...';
+    try{
+      const result = await callServer({ action:'create', username, password: hashPassword(password) });
+      if(result.status === 'error'){ loginMessage.textContent = result.message; return; }
+      setCurrentProfile({ username: result.username, stats: result.stats });
+      usernameInput.value = '';
+      passwordInput.value = '';
+      loginMessage.textContent = 'アカウントを作成しました。';
+      showSelectScreen();
+    } catch(err){
+      loginMessage.textContent = 'サーバーに接続できませんでした。';
     }
-    const profile = createAccount(username, password);
-    setCurrentProfile(profile);
-    usernameInput.value = '';
-    passwordInput.value = '';
-    loginMessage.textContent = 'アカウントを作成しました。';
-    showSelectScreen();
   }
 
   function logout(){
@@ -411,45 +376,9 @@
     showLoginScreen('ログアウトしました。');
   }
 
-  function escapeCsv(value){
-    const str = String(value ?? '');
-    if(str.includes(',') || str.includes('"') || str.includes('\n')){
-      return '"' + str.replace(/"/g, '""') + '"';
-    }
-    return str;
-  }
-
-  function exportLogsAsCSV(){
-    const accounts = loadAccounts();
-    const rows = [
-      ['username','mode','plays','totalTimeSeconds','bestTimeSeconds','bestScore']
-    ];
-    for(const [username, account] of Object.entries(accounts)){
-      const aStats = account.stats.A || {plays:0,totalTime:0,bestTime:null};
-      const bStats = account.stats.B || {plays:0,totalTime:0,bestScore:0};
-      rows.push([
-        username, 'A', aStats.plays, aStats.totalTime.toFixed(2), aStats.bestTime===null? '' : aStats.bestTime.toFixed(2), ''
-      ]);
-      rows.push([
-        username, 'B', bStats.plays, bStats.totalTime.toFixed(2), '', bStats.bestScore
-      ]);
-    }
-    const csvText = rows.map(row => row.map(escapeCsv).join(',')).join('\n');
-    const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'dino_replay_logs.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
   btnLogin.onclick = loginUser;
   btnCreate.onclick = handleCreate;
   logoutBtn.onclick = logout;
-  btnExportLog.onclick = exportLogsAsCSV;
   [usernameInput, passwordInput].forEach(input => {
     input.addEventListener('keydown', e => {
       if(e.key === 'Enter'){
